@@ -21,4 +21,4 @@
 * Download zip, fork or clone.
 * Install requirements
 * And Run !
-* If you have any problems contact me!
+* If you have any problems contact me !
