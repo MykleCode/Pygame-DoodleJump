@@ -1,211 +1,143 @@
-# -*- coding: utf-8 -*-
-"""
-	CopyLeft 2021 Michael Rouves
-
-	This file is part of Pygame-DoodleJump.
-	Pygame-DoodleJump is free software: you can redistribute it and/or modify
-	it under the terms of the GNU Affero General Public License as published by
-	the Free Software Foundation, either version 3 of the License, or
-	(at your option) any later version.
-
-	Pygame-DoodleJump is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-	GNU Affero General Public License for more details.
-
-	You should have received a copy of the GNU Affero General Public License
-	along with Pygame-DoodleJump. If not, see <https://www.gnu.org/licenses/>.
-"""
-
-
-from random import randint
-from pygame import Surface
+from random import randint 
+from pygame import Surface, image, transform, mixer
+from pygame.time import Clock, get_ticks
 import asyncio
-
+import settings as config
 from singleton import Singleton
 from sprite import Sprite
-import settings as config
+mixer.init()
 
-
-
-#return True with a chance of: P(X=True)=1/x
-chance = lambda x: not randint(0,x)
-
-
+chance = lambda x: not randint(0,x) # Creating a variable dependent on x, the more x, the less likely it is to get True
 class Bonus(Sprite):
-	"""
-	A class to represent a bonus
-	Inherits the Sprite class.
-	"""
-
-	WIDTH = 15
-	HEIGHT = 15
-
-	def __init__(self, parent:Sprite,color=config.GRAY,
-			force=config.PLAYER_BONUS_JUMPFORCE):
-
-		self.parent = parent
+	def __init__(self, parent:Sprite, force=config.PLAYER_BONUS_JUMPFORCE): # Accepting the parameters of the parent object
+		self.parent = parent # Binding
 		super().__init__(*self._get_inital_pos(),
-			Bonus.WIDTH, Bonus.HEIGHT, color)
-		self.force = force
+			config.BONUS_WIDTH, config.BONUS_HEIGHT) # Position, width, height, color are passed
+		self.force = force # Jump power
+		self.model = image.load(config.bonus_default_image).convert_alpha() # Image model
+		self.effect = False # If player speed increase effect occurs (used to start animation)
+		self.tag = 'bonus' # tag
+		self.bonus_effect_duration = 100 # Bonus animation effect duration
+		self.bonus_effect_start_time = None # Blank for counting the start of the animation
+		self.current_frame = 0 # Current animation frame
+		self.animation_finished = False # Animation ended
 	
 	def _get_inital_pos(self):
-		x = self.parent.rect.centerx - Bonus.WIDTH//2
-		y = self.parent.rect.y - Bonus.HEIGHT
+		# Getting the current position
+		x = self.parent.rect.centerx - config.BONUS_WIDTH//2
+		y = self.parent.rect.y - config.BONUS_HEIGHT
 		return x,y
-
-
-
-
-
-class Platform(Sprite):
-	"""
-	A class to represent a platform.
-
-	Should only be instantiated by a Level instance.
-	Can have a bonus spring or broke on player jump.
-	Inherits the Sprite class.
-	"""
-	# (Overriding inherited constructor: Sprite.__init__)
-	def __init__(self, x:int, y:int, width:int, height:int,
-			initial_bonus=False,breakable=False):
-
-		color = config.PLATFORM_COLOR
-		if breakable:color = config.PLATFORM_COLOR_LIGHT
-		super().__init__(x,y,width,height,color)
-
-		self.breakable = breakable
-		self.__level = Level.instance
-		self.__bonus = None
-		if initial_bonus:
-			self.add_bonus(Bonus)
-
-	# Public getter for __bonus so it remains private
-	@property
-	def bonus(self):return self.__bonus
-
-	def add_bonus(self,bonus_type:type) -> None:
-		""" Safely adds a bonus to the platform.
-		:param bonus_type type: the type of bonus to add.
-		"""
-		assert issubclass(bonus_type,Bonus), "Not a valid bonus type !"
-		if not self.__bonus and not self.breakable:
-			self.__bonus = bonus_type(self)
 	
-	def remove_bonus(self) -> None:
-		" Safely removes platform's bonus."
+class Platform(Sprite):
+	def __init__(self, x:int, y:int, width:int, height:int,
+			initial_bonus=False,breakable=False): # designation of data types and initial parameters in the class constructor
+		self.model = image.load(config.platform_image).convert_alpha() # model (default)
+		self.tag = 'platform' # tag
+
+		if breakable: # Model change if the platform is disposable
+			self.model = image.load(config.broken_platform_image).convert_alpha() # model (broken)
+		
+		super().__init__(x,y,width,height)
+		self.breakable = breakable 
+		self.__level = Level.instance # Setting value equal to class instance Level
+		self.__bonus = None # Blank for creating a personal instance of the Bonus class
+		if initial_bonus: # If the platform have a bonus 
+			self.add_bonus(Bonus) # Adding in a sprite group
+
+	@property # The ability to open access the class
+	def bonus(self): 
+		return self.__bonus
+
+	def add_bonus(self,bonus_type:type):
+		# Adds a bonus to the platform
+		assert issubclass(bonus_type,Bonus) # Checking if bonus_type is a subclass of Bonus
+		if not self.__bonus and not self.breakable: # Checking whether there is already a bonus on the platform and whether it is a solid platform
+			self.__bonus = bonus_type(self) # If the conditions match, a bonus instance of type bonus_type is created
+	
+	def remove_bonus(self):
 		self.__bonus = None
 
-	def onCollide(self) -> None:
-		" Called in update if collision with player (safe to overrided)."
+	def onCollide(self):
+		# Removal of the platform if it is a one-time use
 		if self.breakable:
+			config.stomp.play() # Breaking sound production
 			self.__level.remove_platform(self)
 		
-	# ( Overriding inheritance: Sprite.draw() )
-	def draw(self, surface:Surface) -> None:
-		""" Like Sprite.draw().
-		Also draws the platform's bonus if it has one.
-		:param surface pygame.Surface: the surface to draw on.
-		"""
-		# check if out of screen: should be deleted
-		super().draw(surface)
-		if self.__bonus:
-			self.__bonus.draw(surface)
-		if self.camera_rect.y+self.rect.height>config.YWIN:
-			self.__level.remove_platform(self)
-
-
-
-
+	def draw(self, surface:Surface):
+		# Rendering the platform on the passed Surface
+		super().draw(surface) # Draw method call
+		distance = 0
+		if self.__bonus: # Checking for the existence of an object on the platform
+			self.__bonus.draw(surface) 
+			distance = config.BONUS_HEIGHT # Bonus amount
+		if self.camera_rect.y + self.rect.height > config.YWIN + distance + 5:  # Checking if the platform boundary goes beyond the screen
+			self.__level.remove_platform(self) # Removing a platform
 
 class Level(Singleton):
-	"""
-	A class to represent the level.
-	
-	used to manage updates/generation of platforms.
-	Can be access via Singleton: Level.instance.
-	(Check Singleton design pattern for more info)
-	"""
-	
-	# constructor called on new instance: Level()
 	def __init__(self):
-		self.platform_size = config.PLATFORM_SIZE
-		self.max_platforms = config.MAX_PLATFORM_NUMBER
-		self.distance_min = min(config.PLATFORM_DISTANCE_GAP)
-		self.distance_max = max(config.PLATFORM_DISTANCE_GAP)
+		self.platform_size = config.PLATFORM_SIZE # Platform size
+		self.max_platforms = config.MAX_PLATFORM_NUMBER # Max platform count
+		self.distance_min = min(config.PLATFORM_DISTANCE_GAP) # Minimum distance between platforms
+		self.distance_max = max(config.PLATFORM_DISTANCE_GAP) # Maximum distance between platforms
 
-		self.bonus_platform_chance = config.BONUS_SPAWN_CHANCE
-		self.breakable_platform_chance = config.BREAKABLE_PLATFORM_CHANCE
 
-		self.__platforms = []
-		self.__to_remove = []
+		self.bonus_platform_chance = config.BONUS_SPAWN_CHANCE # Bonus spawn chance
+		self.breakable_platform_chance = config.BREAKABLE_PLATFORM_CHANCE # Disposable platform chance
 
-		self.__base_platform = Platform(
-			config.HALF_XWIN - self.platform_size[0]//2,# X POS
-			config.HALF_YWIN + config.YWIN/3, #           Y POS
-			*self.platform_size)#                         SIZE
-	
+		self.__platforms = [] 
+		self.__to_remove = [] # Whatever needs to be removed
+		
+		# Creating a platform instance
+		self.__base_platform = Platform( 
+			config.HALF_XWIN - self.platform_size[0]//2, # X pos
+			config.HALF_YWIN + config.YWIN/3, # Y pos
+			*self.platform_size) # Size
 
-	# Public getter for __platforms so it remains private
+	# Definition as a class property
 	@property
-	def platforms(self) -> list:
-		return self.__platforms
+	def platforms(self) -> list: # Expected data type: list
+		return self.__platforms # Returns all platforms as list
 
-
-	async def _generation(self) -> None:
-		" Asynchronous management of platforms generation."
-		# Check how many platform we need to generate
-		nb_to_generate = self.max_platforms - len(self.__platforms)
-		for _ in range(nb_to_generate):
+	# Asynchronous function (asynchrony is used to optimize and process the function by several processor cores)
+	async def _generation(self): 
+		# Checking the required number of platforms for generation
+		nb_to_generate = self.max_platforms - len(self.__platforms) # Calculation of the number of platforms for generation
+		for _ in range(nb_to_generate): # Creating a platforms
 			self.create_platform()
 		
-
-	def create_platform(self) -> None:
-		" Create the first platform or a new one."
-		if self.__platforms:
-			# Generate a new random platform :
-			# x position along screen width
-			# y position starting from last platform y pos +random offset
-			offset = randint(self.distance_min,self.distance_max)
-			self.__platforms.append(Platform(
-				randint(0,config.XWIN-self.platform_size[0]),#       X POS
-				self.__platforms[-1].rect.y-offset,#                 Y POS
-				*self.platform_size, #                               SIZE
-				initial_bonus=chance(self.bonus_platform_chance),# HAS A Bonus
-				breakable=chance(self.breakable_platform_chance)))#  IS BREAKABLE
+	def create_platform(self):
+		# Creating a new platforms
+		if self.__platforms: # If platform exists
+			# Generation a random platform 
+			offset = randint(self.distance_min,self.distance_max) # Mixing relative to neighbors
+			self.__platforms.append(Platform( # Creating a new instance
+				randint(0,config.XWIN-self.platform_size[0]), # X pos
+				self.__platforms[-1].rect.y-offset, # Y pos
+				*self.platform_size, # Size
+				initial_bonus=chance(self.bonus_platform_chance), # Bonus available
+				breakable=chance(self.breakable_platform_chance))) # Disposable or not
 		else:
-			# (just in case) no platform: add the base one
+			# If the platform does not exist, adds the base platform to the list
 			self.__platforms.append(self.__base_platform)
 
-
-	def remove_platform(self,plt:Platform) -> bool:
-		""" Removes a platform safely.
-		:param plt Platform: the platform to remove
-		:return bool: returns true if platoform successfully removed
-		"""
+	def remove_platform(self,plt:Platform) -> bool: # Return value bool
 		if plt in self.__platforms:
 			self.__to_remove.append(plt)
 			return True
-		return False
+		return False # Platform has not found
 
-
-	def reset(self) -> None:
-		" Called only when game restarts (after player death)."
+	def reset(self):
+		# Platform reloading, by assigning platforms to one base platform
 		self.__platforms = [self.__base_platform]
 
-
-	def update(self) -> None:
-		" Should be called each frame in main game loop for generation."
+	def update(self):
+		# Called every frame to generate
 		for platform in self.__to_remove:
 			if platform in self.__platforms:
 				self.__platforms.remove(platform)
 		self.__to_remove = []
-		asyncio.run(self._generation())
+		asyncio.run(self._generation()) # Running a function using async
 
-
-	def draw(self,surface:Surface) -> None:
-		""" Called each frame in main loop, draws each platform
-		:param surface pygame.Surface: the surface to draw on.
-		"""
-		for platform in self.__platforms:
-			platform.draw(surface)
+	def draw(self,surface:Surface):
+		for platform in self.__platforms: # Rendering of each platform
+			platform.draw(surface) 

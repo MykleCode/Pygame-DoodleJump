@@ -1,17 +1,17 @@
-# Pygame DoodleJump
-The simplest doodle jump made with python3 and pygame in only 2 days
+# Pygame DoodleJump (MARWIN ADVENTURE)
+### The game like a doodle jump game based on original code with using a pygame
 
 ## Table of contents
-* [General info](#general-info)
-* [Requirements](#requirements)
-* [Setup](#setup)
 
-![Screenshot](https://github.com/MykleCode/pygame-doodlejump/blob/main/demo.gif)
+
+<img src="https://github.com/kostrv/Pygame-DoodleJump-ULTRA-UPGRADED/raw/main/screenshots/preview_2.jpg" alt="Screenshot" width="400" height="400"> <img src="https://github.com/kostrv/Pygame-DoodleJump-ULTRA-UPGRADED/raw/main/screenshots/preview_3.jpg" alt="Screenshot" width="400" height="400"> <img src="https://github.com/kostrv/Pygame-DoodleJump-ULTRA-UPGRADED/raw/main/screenshots/preview_4.jpg" alt="Screenshot" width="400" height="400"> <img src="https://github.com/kostrv/Pygame-DoodleJump-ULTRA-UPGRADED/raw/main/screenshots/preview_1.jpg" alt="Screenshot" width="400" height="400"> 
+
 
 ## General Info
-* No images used for graphics
+* Work has been done to improve the visual
 * Well clean and organised code
-* Relatively small code
+* Code is optimized and performant
+* Every part of the code is uncommented
 
 ## Requirements
 * [Python3](https://www.python.org/downloads/)
@@ -21,3 +21,4 @@ The simplest doodle jump made with python3 and pygame in only 2 days
 * Download zip, fork or clone.
 * Install requirements
 * And Run !
+* If you have any problems contact me !

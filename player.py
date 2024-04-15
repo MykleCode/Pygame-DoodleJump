@@ -1,153 +1,128 @@
-# -*- coding: utf-8 -*-
-"""
-	CopyLeft 2021 Michael Rouves
-
-	This file is part of Pygame-DoodleJump.
-	Pygame-DoodleJump is free software: you can redistribute it and/or modify
-	it under the terms of the GNU Affero General Public License as published by
-	the Free Software Foundation, either version 3 of the License, or
-	(at your option) any later version.
-
-	Pygame-DoodleJump is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-	GNU Affero General Public License for more details.
-
-	You should have received a copy of the GNU Affero General Public License
-	along with Pygame-DoodleJump. If not, see <https://www.gnu.org/licenses/>.
-"""
-
-
 from math import copysign
-from pygame.math import Vector2
-from pygame.locals import KEYDOWN,KEYUP,K_LEFT,K_RIGHT
-from pygame.sprite import collide_rect
-from pygame.event import Event
-
+import pygame
 from singleton import Singleton
 from sprite import Sprite
 from level import Level
 import settings as config
 
+pygame.mixer.init()
 
-
-#Return the sign of a number: getsign(-5)-> -1
-getsign = lambda x : copysign(1, x)
+# Returning values: (x < 0 => -1) & (x > 0 => 1) & (x == 0 => 0)
+getsign = lambda x: copysign(1, x)
 
 class Player(Sprite, Singleton):
-	"""
-	A class to represent the player.
-	
-	Manages player's input,physics (movement...).
-	Can be access via Singleton: Player.instance.
-	(Check Singleton design pattern for more info).
-	"""
-	# (Overriding Sprite.__init__ constructor)
-	def __init__(self,*args):
-		#calling default Sprite constructor
-		Sprite.__init__(self,*args)
-		self.__startrect = self.rect.copy()
-		self.__maxvelocity = Vector2(config.PLAYER_MAX_SPEED,100)
-		self.__startspeed = 1.5
+    # Initialization using a shared dictionary
+    def __init__(self, *args):
+        Sprite.__init__(self, *args)
+        self.__startrect = self.rect.copy()  # Create the main rect
+        self.__maxvelocity = pygame.Vector2(config.PLAYER_MAX_SPEED, 100)  # Create a vector with x, y coordinates
+        self.__startspeed = 1.5  # Initial speed, increases over time
+        self._velocity = pygame.Vector2()  # Create a vector
+        self._input = 0  # Input check
+        self._jumpforce = config.PLAYER_JUMPFORCE  # Jump force
+        self._bonus_jumpforce = config.PLAYER_BONUS_JUMPFORCE  # Bonus jump force
+        self.gravity = config.GRAVITY  # Gravity
+        self.accel = 0.5  # Acceleration
+        self.deccel = 0.6  # Deceleration
+        self.dead = False  # Whether dead or not
+        self.model = pygame.image.load(config.jumping[0]).convert_alpha()  # Model
+        self.tag = 'player'  # Tag
+        self.direction = ''  # Direction
+        self.condition = ''  # Current condition
 
-		self._velocity = Vector2()
-		self._input = 0
-		self._jumpforce = config.PLAYER_JUMPFORCE
-		self._bonus_jumpforce = config.PLAYER_BONUS_JUMPFORCE
+    def _fix_velocity(self):
+        # Set velocity between minimum and maximum values
+        self._velocity.y = min(self._velocity.y, self.__maxvelocity.y)
+        self._velocity.y = round(max(self._velocity.y, -self.__maxvelocity.y), 2)
+        self._velocity.x = min(self._velocity.x, self.__maxvelocity.x)
+        self._velocity.x = round(max(self._velocity.x, -self.__maxvelocity.x), 2)
 
-		self.gravity = config.GRAVITY
-		self.accel = .5
-		self.deccel = .6
-		self.dead = False
-	
+    def reset(self):
+        # Reset the game
+        self._velocity = pygame.Vector2()
+        self.rect = self.__startrect.copy()
+        self.camera_rect = self.__startrect.copy()
+        self.dead = False
 
-	def _fix_velocity(self) -> None:
-		""" Set player's velocity between max/min.
-		Should be called in Player.update().
-		"""
-		self._velocity.y = min(self._velocity.y,self.__maxvelocity.y)
-		self._velocity.y = round(max(self._velocity.y,-self.__maxvelocity.y),2)
-		self._velocity.x = min(self._velocity.x,self.__maxvelocity.x)
-		self._velocity.x = round(max(self._velocity.x,-self.__maxvelocity.x),2)
+    def handle_event(self, event: pygame.event.Event):
+        # Check for movement initiation
+        if event.type == pygame.KEYDOWN:
+            # Left-right movement
+            if event.key == pygame.K_a:  # Left
+                self._velocity.x = -self.__startspeed
+                self._input = -1
+                self.left = True
+                self.right = False
+                self.direction = 'left'
+            elif event.key == pygame.K_d:  # Right
+                self._velocity.x = self.__startspeed
+                self._input = 1
+                self.right = True
+                self.left = False
+                self.direction = 'right'
 
+        # Check for movement cessation
+        elif event.type == pygame.KEYUP:
+            if (event.key == pygame.K_a and self._input == -1) or (event.key == pygame.K_d and self._input == 1):
+                self._input = 0
 
-	def reset(self) -> None:
-		" Called only when game restarts (after player death)."
-		self._velocity = Vector2()
-		self.rect = self.__startrect.copy()
-		self.camera_rect = self.__startrect.copy()
-		self.dead = False
+    def jump(self, force: float = None):
+        # Jump
+        if not force:  # If force is None or False
+            force = self._jumpforce  # Assign jump force
+        self._velocity.y = -force  # Change the y-component of the velocity vector
 
+    def onCollide(self, obj: Sprite):
+        # Collision with the upper part of a platform
+        self.rect.bottom = obj.rect.top
+        self.jump()
 
-	def handle_event(self,event:Event) -> None:
-		""" Called in main loop foreach user input event.
-		:param event pygame.Event: user input event
-		"""
-		# Check if start moving
-		if event.type == KEYDOWN:
-			# Moves player only on x-axis (left/right)
-			if event.key == K_LEFT:
-				self._velocity.x=-self.__startspeed
-				self._input = -1
-			elif event.key == K_RIGHT:
-				self._velocity.x=self.__startspeed
-				self._input = 1
-		#Check if stop moving
-		elif event.type == KEYUP:
-			if (event.key== K_LEFT and self._input==-1) or (
-					event.key==K_RIGHT and self._input==1):
-				self._input = 0
-	
+    def get_status(self):
+        # Get movement status
+        if 0.5 > self._velocity.y >= -21:
+            self.condition = 'jumping'
+        elif self._velocity.y < -21:
+            self.condition = 'bonus_effect'
+        else:
+            self.condition = 'falling'
 
-	def jump(self,force:float=None) -> None:
-		if not force:force = self._jumpforce
-		self._velocity.y = -force
+    def collisions(self):
+        # Collisions
+        lvl = Level.instance  # Instance of the Level class
+        if not lvl:  # If the instance doesn't exist, return None and stop execution
+            return
+        for platform in lvl.platforms:  # Iterate through platforms
+            # Check for falling or collision
+            if self._velocity.y > 0.5:  # Vertical speed is greater, indicating the object should fall
+                # Check for collision with a bonus
+                if platform.bonus and pygame.sprite.collide_rect(self, platform.bonus):
+                    config.explosion.play()  # Play explosion sound
+                    self.onCollide(platform.bonus)
+                    platform.bonus.effect = True
+                    self.jump(platform.bonus.force)  # Apply higher jump force
+                    self.bonus_effect_start_time = pygame.time.get_ticks()
+                # Check for collision with a platform
+                if pygame.sprite.collide_rect(self, platform):
+                    config.jump.play()  # Play jump sound
+                    self.onCollide(platform)
+                    platform.onCollide()
 
+    def update(self):
+        # Player movement
+        if self.camera_rect.y > config.YWIN * 2:
+            self.dead = True
+            return
+        # Update velocity (applying gravity, input data)
+        self._velocity.y += self.gravity  # Change velocity based on gravity
+        if self._input:  # Accelerate along the x-axis when a key is pressed
+            self._velocity.x += self._input * self.accel
+        elif self._velocity.x:  # Decelerate along the x-axis when no key is pressed
+            self._velocity.x -= getsign(self._velocity.x) * self.deccel
+            self._velocity.x = round(self._velocity.x)
+        self._fix_velocity()
 
-	def onCollide(self, obj:Sprite) -> None:
-		self.rect.bottom = obj.rect.top
-		self.jump()
-	
+        # Update position
+        self.rect.x = (self.rect.x + self._velocity.x) % (config.XWIN - self.rect.width)  # Update horizontal position
+        self.rect.y += self._velocity.y  # Update vertical position
 
-	def collisions(self) -> None:
-		""" Checks for collisions with level.
-		Should be called in Player.update().
-		"""
-		lvl = Level.instance
-		if not lvl: return
-		for platform in lvl.platforms:
-			# check falling and colliding <=> isGrounded ?
-			if self._velocity.y > .5:
-				# check collisions with platform's spring bonus
-				if platform.bonus and collide_rect(self,platform.bonus):
-					self.onCollide(platform.bonus)
-					self.jump(platform.bonus.force)
-
-				# check collisions with platform
-				if collide_rect(self,platform):
-					self.onCollide(platform)
-					platform.onCollide()
-
-
-	def update(self) -> None:
-		""" For position and velocity updates.
-		Should be called each frame.
-		"""
-		#Check if player out of screen: should be dead
-		if self.camera_rect.y>config.YWIN*2:
-			self.dead = True
-			return
-		#Velocity update (apply gravity, input acceleration)
-		self._velocity.y += self.gravity
-		if self._input: # accelerate
-			self._velocity.x += self._input*self.accel
-		elif self._velocity.x: # deccelerate
-			self._velocity.x -= getsign(self._velocity.x)*self.deccel
-			self._velocity.x = round(self._velocity.x)
-		self._fix_velocity()
-
-		#Position Update (prevent x-axis to be out of screen)
-		self.rect.x = (self.rect.x+self._velocity.x)%(config.XWIN-self.rect.width)
-		self.rect.y += self._velocity.y
-
-		self.collisions()
+        self.collisions()
